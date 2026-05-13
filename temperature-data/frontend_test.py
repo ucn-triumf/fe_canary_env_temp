@@ -14,7 +14,9 @@ broker_port = 8883
 
 temperature = 1.0
 humidity = 1.0
-currentMAC = 'abcdefghijkl'
+battery = 1.0
+currentMAC = ''
+got_new_message = False
 
 
 def on_connect(client, userdata, flags, rc):
@@ -29,20 +31,25 @@ def on_connect(client, userdata, flags, rc):
 # the callback for when a PUBLISH message is received from server
 def on_message(client, userdata, msg):
     print(msg.topic+" "+str(msg.payload))
+    global got_new_message
+    got_new_message = True
+
     global temperature
     global humidity
+    global battery
     global currentMAC
     json_data = json.loads(msg.payload)
     temp = json_data['temperature']
     hum = json_data['relativehumidity']
+    batt = json_data['battery']
     currentMAC = (msg.topic).split('/')[1]
     print(currentMAC)
-    if isinstance(temp, float) and isinstance(hum, float):
+    if isinstance(temp, float) and isinstance(hum, float) and isinstance(batt, float):
         temperature = temp
         humidity = hum
-    else:
-        temperature = 0.0
-        humidity = 0.0
+        battery = batt
+    else:  # could be null if sensor disconnected
+        got_new_message = False  # do not record event for this message
     print(temperature, humidity)
 
 
@@ -93,17 +100,26 @@ class MyPeriodicEquipment(midas.frontend.EquipmentBase):
         or None (if we shouldn't write an event).
         """
         
-        # In this example, we just make a simple event with one bank.
+        global got_new_message
+
         event = midas.event.Event()
         
-        # Create a bank (called "MYBK") which in this case will store 8 ints.
-        # data can be a list, a tuple or a numpy array.
+        # check if we got a new message since last time readout_func ran
+        if(got_new_message == False):
+            return None
+        # if the above wasn't triggered, then we got a message, so reset flag
+        # then write banks and return event
+        got_new_message = False
         
-        data = [temperature,humidity,7]
+        data = [temperature,humidity,battery]
         if(currentMAC == '84CCA8842F45'):
             event.create_bank("CNY1", midas.TID_FLOAT, data)
         elif(currentMAC == 'E8DB8496A0F6'):
             event.create_bank("CNY2", midas.TID_FLOAT, data)
+        elif(currentMAC == '9C9C1F458F3A'):
+            event.create_bank("CNY3", midas.TID_FLOAT, data)
+        elif(currentMAC == '9C9C1F45B1E3'):
+            event.create_bank("CNY4", midas.TID_FLOAT, data)
 
         return event
 
@@ -139,8 +155,7 @@ class MyFrontend(midas.frontend.FrontendBase):
 if __name__ == "__main__":
 
     client = mqtt.Client("P1")  # P1 is a unique identifier
-    client.on_connect = on_connect  # smarter: could put on_connect stuff into readout_func and then just make readout_func the client.on_connect
-    # wait no, that wouldn't work bc readout_func is called continuously and it's (self)
+    client.on_connect = on_connect
     client.on_message = on_message
     
     client.username_pw_set("canary", "measuretemp")
@@ -150,8 +165,8 @@ if __name__ == "__main__":
 
     # The main executable is very simple - just create the frontend object,
     # and call run() on it.
-    my_fe = MyFrontend()
-    my_fe.run()
+    with MyFrontend() as my_fe:
+        my_fe.run()
 
     client.loop_stop()
 
