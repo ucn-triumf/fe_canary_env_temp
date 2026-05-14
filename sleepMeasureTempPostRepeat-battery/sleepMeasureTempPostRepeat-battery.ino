@@ -81,7 +81,7 @@ void setup()
     addItem(toPost, ""); // Blank name terminates string
     post2MQTT(mqtt, topic, toPost); // Connects to Falkor, sends json string, disconnects
     ESP.deepSleep(SLEEP_TIME*1e6,WAKE_RF_DISABLED); // µs sleep time. Connect GPIO16 to RST for this to work.
-    LowPower.powerDown()
+    //LowPower.powerDown() // df May 13, 2026: had to comment this out to compile, does this break things?
 }
     
 void loop() {} // In Measure-Post-Sl  eep-Repeat mode, it never reaches loop: it sleeps then starts
